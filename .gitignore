@@ -1,0 +1,57 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python testing cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Databases & local storage simulation fallbacks
+*.sqlite
+*.db
+mock_s3_bucket/
+backend/mock_s3_bucket/
+models/*.pkl
+backend/models/*.pkl
+
+# Frontend Node dependencies & build directories
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+.eslintcache
+
+# Logs & temporary files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
