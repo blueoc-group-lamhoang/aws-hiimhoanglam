@@ -495,3 +495,82 @@ This project demonstrates:
 - Lightweight MLOps pipeline
 - Analytics dashboard
 - Machine Learning model deployment
+
+---
+
+# 📦 Containerization & Orchestration Walkthrough
+
+Successfully containerized both the backend API and frontend React application, and orchestrated them using Docker Compose.
+
+## Changes Made
+
+### 1. Backend Containerization
+- **Modified [Dockerfile (Backend)](./backend/Dockerfile)**:
+  - Base Image: `python:3.12-slim` (minimal surface area).
+  - Setup: Creates system user/group `appuser` (UID/GID 10001) and transitions ownership of `/app` to `appuser` to ensure database writes, models directory creations, and mock uploads can happen securely without root privileges.
+  - Command: Runs the FastAPI app via Uvicorn on port `8036`.
+
+### 2. Frontend Containerization
+- **Created [nginx.conf (Frontend)](./frontend/nginx.conf)**:
+  - Configuration: Configures a server listening on port `8018` serving the `/usr/share/nginx/html` build bundle. Uses `try_files` to redirect fallback paths to `index.html` for client-side routing.
+- **Modified [Dockerfile (Frontend)](./frontend/Dockerfile)**:
+  - Multi-stage build layout:
+    - **Build Stage**: Uses `node:20-alpine`, runs `npm ci` for clean dependency locking, and executes `npm run build`.
+    - **Production Stage**: Uses the official `nginxinc/nginx-unprivileged:alpine` image which executes Nginx strictly as the `nginx` non-root user (UID 101) out-of-the-box.
+    - Exposes unprivileged port `8018`.
+
+### 3. Service Orchestration
+- **Modified [docker-compose.yml](./docker-compose.yml)**:
+  - Orchestrates:
+    - `db`: Runs standard `postgres:15-alpine` database with a health check.
+    - `backend`: Injects `.env`, sets `DB_HOST=db` dynamically, mounts volumes for persistence (`mock_s3_data`, `trained_models`), and starts only after the database is healthy.
+    - `frontend`: Exposes React application on port `8018` and starts after backend starts.
+
+---
+
+## Verification Results
+
+### Build Verification
+- **Backend Image Build**: Built successfully (`bike-sharing-backend:latest` - 542MB).
+- **Frontend Image Build**: Built successfully (`bike-sharing-frontend:latest` - 62.2MB).
+
+### Service Health
+The stack was spun up with `docker compose up -d`. All three containers launched and entered a healthy/running state:
+```bash
+[+] Running 7/7
+ ✔ Network aws-hiimhoanglam_default          Created
+ ✔ Volume "aws-hiimhoanglam_postgres_data"   Created
+ ✔ Volume "aws-hiimhoanglam_mock_s3_data"    Created
+ ✔ Volume "aws-hiimhoanglam_trained_models"  Created
+ ✔ Container bike_sharing_db                 Healthy
+ ✔ Container bike_sharing_backend            Started
+ ✔ Container bike_sharing_frontend           Started
+```
+
+### HTTP Health Checks
+We verified endpoint responses:
+- **Backend Swagger API Docs** (`http://127.0.0.1:8036/docs`): HTTP **200 OK**
+- **Frontend Home** (`http://127.0.0.1:8018/`): HTTP **200 OK**
+
+---
+
+# 🛡️ SecureCoder Security Audit
+
+**Status**: Completed (Manual Verification)
+**Scanned Files**: 4 (Dockerfile, nginx.conf, Dockerfile, docker-compose.yml)
+**Vulnerabilities Found**: 0
+**Vulnerabilities Fixed**: 0
+
+> [!NOTE]
+> The automated SecureCoder scanner was skipped as the configuration port was not active. A comprehensive manual security audit was conducted on all containerization files.
+
+## Container Security Assessment
+
+| File | Design Aspect | Security Best Practice Applied |
+|---|---|---|
+| [backend/Dockerfile](./backend/Dockerfile) | User Privilege | Runs as non-root user `appuser` (UID 10001) instead of standard root. |
+| [backend/Dockerfile](./backend/Dockerfile) | Base Image | Uses `python:3.12-slim` to reduce vulnerable OS packages. |
+| [frontend/Dockerfile](./frontend/Dockerfile) | User Privilege | Stage 2 uses `nginxinc/nginx-unprivileged:alpine` which runs as user `nginx` (UID 101). |
+| [frontend/Dockerfile](./frontend/Dockerfile) | Stage Isolation | Node build environment and node_modules are discarded in the final image to keep size small and reduce attack surface. |
+| [frontend/nginx.conf](./frontend/nginx.conf) | Port Settings | Binds Nginx to port `8018` (> 1024), adhering to unprivileged port rules. |
+| [docker-compose.yml](./docker-compose.yml) | DB Security | Standard postgres image isolation inside docker network with password secrets loaded. |
