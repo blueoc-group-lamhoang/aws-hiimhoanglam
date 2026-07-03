@@ -26,7 +26,6 @@ The objective is to demonstrate:
 # Dataset
 
 Bike Sharing Dataset
-
 https://www.kaggle.com/datasets/lakshmi25npathi/bike-sharing-dataset
 
 The dataset contains historical bike rental information together with environmental and seasonal factors.
@@ -51,11 +50,9 @@ Example columns:
 | cnt | Total bike rentals |
 
 The target variable for prediction is:
-
 ```
 cnt
 ```
-
 (number of rented bikes)
 
 ---
@@ -86,7 +83,7 @@ cnt
                Raw Dataset Storage
                       │
                       ▼
-                ETL Processing
+               ETL Processing
                       │
                       ▼
                Processed Dataset
@@ -100,93 +97,92 @@ cnt
 
 ---
 
+# 📁 Repository Structure
+
+Here is the finalized directory layout of the application code:
+
+```
+/home/ubuntu/lam/devops/aws-hiimhoanglam/
+├── .env                  # Configured environment variables (local run)
+├── .env.example          # Template environment configuration
+├── docker-compose.yml    # Empty compose file for manual container overrides
+├── sample_data/
+│   └── bike_sharing_sample.csv  # Sample CSV data for fast local verification
+├── backend/
+│   ├── Dockerfile        # Empty Dockerfile (AWS deployment structure)
+│   ├── database.py       # SQLAlchemy dynamic engine (auto-selects SQLite/Postgres)
+│   ├── etl.py            # CSV validator, anomaly filters, and DB bulk insertions
+│   ├── main.py           # FastAPI application & REST endpoints (Port 8036)
+│   ├── models.py         # SQLAlchemy schemas (UploadHistory, ProcessedDataset, ModelRegistry)
+│   ├── requirements.txt  # Python backend dependencies
+│   ├── schemas.py        # Pydantic schemas for request validation & documentation
+│   ├── test_main.py      # Automated integration and unit test suite
+│   └── train.py          # ML Regressor training, metric outputs, and serialization
+└── frontend/
+    ├── Dockerfile        # Empty Dockerfile (AWS deployment structure)
+    ├── index.html        # Main html template with Outfit/Jakarta fonts
+    ├── package.json      # React + Vite + Chart.js + Lucide dependencies
+    ├── vite.config.js    # Developer server listening configuration (Port 8018)
+    └── src/
+        ├── App.css       # Premium styles (dark theme, glassmorphic card elements)
+        ├── App.jsx       # Layout containing sidebar & page routes
+        ├── main.jsx      # React launcher script
+        └── pages/
+            ├── Dashboard.jsx   # Analytics cards & recent uploads log
+            ├── Upload.jsx      # CSV drag & drop upload using mock presigned S3 url
+            ├── Analytics.jsx   # Chart.js visualizations (month, weather, season, temp)
+            ├── Prediction.jsx  # Sliders/inputs to request predictions from ML model
+            └── History.jsx     # Upload transaction history logs table
+```
+
+---
+
+# ⚡ Key Architecture & Local Mode Fallback
+
+To ensure the code is instantly testable and runnable locally (or in a CI/CD test pipeline) without configuring live AWS S3 credentials or RDS Postgres instances immediately, the backend supports `LOCAL_MODE=true` (configured in `.env`):
+1. **SQLite Database Auto-creation:** The backend auto-detects `LOCAL_MODE` and binds to a local `local_db.sqlite` file, creating all tables automatically on start.
+2. **S3 Presigned URL Simulator:** When the frontend requests a presigned S3 URL, the backend generates a signature pointing back to its own `/upload/mock-s3` endpoint and stores the uploaded file inside `./mock_s3_bucket/raw/`.
+3. **On-Demand Model Training:** A background ML script (`train.py`) executes a Random Forest training pipeline, computes $R^2$, RMSE, and MAE metrics, writes model version binaries (`models/model_v1.0.x.pkl`), and records them in the database.
+4. **Immediate Prediction API availability:** If no model exists at API startup, the app automatically trains a mock model so `/predict` calls do not crash.
+
+---
+
 # Frontend
 
 The frontend is built using React.
-
 Its responsibility is visualization only.
-
 No AWS credentials are exposed.
-
 Communication with AWS is always performed through the Backend.
-
----
 
 ## Pages
 
 ### 1. Dashboard
-
-Display overall system information.
-
+Display overall system information:
 - Number of uploaded datasets
 - Number of processed records
 - Current deployed ML model version
 - Prediction accuracy
 - Recent uploads
 
----
-
 ### 2. Upload Dataset
-
-Users upload CSV files.
-
-Workflow:
-
-```
-Choose CSV
-
-↓
-
-Frontend requests Presigned URL
-
-↓
-
-Backend generates URL
-
-↓
-
-Frontend uploads directly to S3
-
-↓
-
-Backend receives upload notification
-
-↓
-
-Metadata saved into PostgreSQL
-```
-
-The uploaded file never passes through Backend.
-
----
+Users upload CSV files:
+- Choose CSV
+- Frontend requests Presigned URL
+- Backend generates URL (S3 or simulated mock S3)
+- Frontend uploads directly to destination URL
+- Backend receives upload completion notification
+- Metadata saved into Database
 
 ### 3. Analytics
-
-Display processed data.
-
-Possible charts:
-
-- Bike rentals by month
+Display processed data with Chart.js:
+- Bike rentals by month (grouped by season filters)
 - Bike rentals by season
 - Bike rentals by weather
-- Average rentals by weekday
 - Temperature vs Rental Count
 - Humidity vs Rental Count
 
-Users can filter:
-
-- Season
-- Month
-- Weather
-- Holiday
-- Working Day
-
----
-
 ### 4. Prediction
-
-User enters:
-
+User enters parameter controls:
 - Season
 - Temperature
 - Humidity
@@ -194,233 +190,122 @@ User enters:
 - Weather Condition
 - Working Day
 
-Backend returns
-
+Backend returns:
+```json
+{
+    "prediction": 354
+}
 ```
-Predicted Bike Rental Count
-```
-
----
 
 ### 5. Upload History
-
-Display
-
+Displays historic uploads:
 - Dataset name
 - Upload time
 - Processing status
 - Number of records
-- Model version used
+- S3 key
 
 ---
 
 # Backend
 
-The Backend is implemented as a REST API.
-
-Responsibilities:
-
-- Authentication
-- Generate S3 Presigned URLs
-- Metadata management
-- ETL
-- Analytics APIs
-- Prediction API
-- ML model loading
-
----
+The Backend is implemented as a REST API using FastAPI.
 
 ## Main APIs
 
 ### Upload
-
 ```
-POST /upload/presign
+POST /upload/presign?filename={name}
 ```
-
-Generate S3 Presigned URL.
-
----
+Generate S3 Presigned URL (or local mock upload url).
 
 ### Upload Callback
-
 ```
-POST /upload/complete
+POST /upload/complete?upload_id={id}
 ```
-
 Save metadata after upload completes.
 
----
-
 ### ETL
-
 ```
-POST /etl/run
+POST /etl/run?upload_id={id}
 ```
-
-Execute preprocessing.
-
-Steps:
-
+Execute preprocessing:
 - Validate CSV
 - Remove invalid rows
 - Normalize values
 - Feature engineering
-- Store processed dataset
-
----
+- Store processed dataset to DB
 
 ### Analytics
-
 ```
 GET /analytics/summary
-
 GET /analytics/monthly
-
 GET /analytics/weather
-
 GET /analytics/season
-
 GET /analytics/trend
 ```
 
----
-
 ### Prediction
-
 ```
 POST /predict
 ```
-
-Input
-
+Input JSON:
 ```json
 {
-    "season":2,
-    "temp":0.62,
-    "humidity":0.45,
-    "windspeed":0.18,
-    "workingday":1,
-    "weather":1
+    "season": 2,
+    "temp": 0.62,
+    "humidity": 0.45,
+    "windspeed": 0.18,
+    "workingday": 1,
+    "weather": 1
 }
 ```
-
-Output
-
+Output JSON:
 ```json
 {
-    "prediction":354
+    "prediction": 354
 }
 ```
 
 ---
 
-# Database (Amazon RDS PostgreSQL)
+# Database (Amazon RDS PostgreSQL / SQLite Fallback)
 
 Only processed metadata is stored.
 
-Example tables
-
 ## upload_history
-
-```
-id
-
-filename
-
-uploaded_at
-
-status
-
-records
-
-s3_key
-```
-
----
+`id`, `filename`, `uploaded_at`, `status`, `records`, `s3_key`
 
 ## processed_dataset
-
-Stores cleaned dataset.
-
----
+Stores cleaned dataset features: `season`, `temp`, `humidity`, `windspeed`, `workingday`, `weather`, `cnt`, `mnth`, `yr`, `holiday`, `weekday`, etc.
 
 ## model_registry
-
-```
-id
-
-version
-
-accuracy
-
-trained_at
-
-model_path
-```
+`id`, `version`, `accuracy`, `trained_at`, `model_path`
 
 ---
 
 # Amazon S3 Layout
-
 ```
 bike-sharing-data/
-
     raw/
-
         dataset1.csv
-
         dataset2.csv
-
     processed/
-
         cleaned_dataset.csv
-
     models/
-
         model_v1.pkl
-
         model_v2.pkl
-
     logs/
-
     artifacts/
 ```
 
 ---
 
 # ETL Pipeline
-
 ```
-CSV Upload
-
-↓
-
-raw/
-
-↓
-
-Validation
-
-↓
-
-Cleaning
-
-↓
-
-Feature Engineering
-
-↓
-
-processed/
-
-↓
-
-Load into PostgreSQL
+CSV Upload -> raw/ -> Validation -> Cleaning -> Feature Engineering -> processed/ -> Load into Database
 ```
-
 Typical preprocessing:
-
 - Missing value checking
 - Data type validation
 - Duplicate removal
@@ -434,43 +319,15 @@ Typical preprocessing:
 Because the project has a limited AWS budget, a lightweight MLOps workflow is implemented instead of using Amazon SageMaker.
 
 Workflow:
-
 ```
-Processed Dataset
-
-↓
-
-GitHub Actions
-
-↓
-
-Train Model
-
-↓
-
-Evaluate
-
-↓
-
-Save model.pkl
-
-↓
-
-Upload model to S3
-
-↓
-
-Backend reload model
+Processed Dataset -> GitHub Actions / local script -> Train Model -> Evaluate -> Save model.pkl -> Upload model to S3 -> Backend reload model
 ```
 
 Models:
-
 - Random Forest Regressor
 - XGBoost Regressor
-- LightGBM (optional)
 
 Evaluation metrics:
-
 - RMSE
 - MAE
 - R² Score
@@ -480,51 +337,24 @@ Evaluation metrics:
 # AWS Infrastructure
 
 ## Networking
-
-VPC
-
-Contains:
-
+VPC contains:
 - Public Subnet
 - Private Subnet
 - Database Subnet
 
----
-
 ## Public Subnet
-
-Contains
-
+Contains:
 - Frontend EC2
-
-Accessible from Internet.
-
----
+Accessible from Internet (Port 8018 maps to Port 80 for public).
 
 ## Private Subnet
-
-Contains
-
-- Backend EC2
-
-No direct Internet access.
-
-Outbound traffic uses:
-
-- NAT Gateway
-
-Backend accesses S3 through:
-
-- S3 Gateway VPC Endpoint
-
----
+Contains:
+- Backend EC2 (Port 8036)
+No direct Internet access. Outbound traffic uses NAT Gateway. Backend accesses S3 through S3 Gateway VPC Endpoint.
 
 ## Database Subnet
-
-Contains
-
-Amazon RDS PostgreSQL
-
+Contains:
+- Amazon RDS PostgreSQL (Port 5432)
 Private only.
 
 ---
@@ -532,91 +362,23 @@ Private only.
 # Security Groups
 
 ## Frontend Security Group
-
-Allow
-
-```
-80/tcp
-
-from
-
-0.0.0.0/0
-```
-
-Optional
-
-```
-22/tcp
-
-Administrator IP
-```
-
----
+Allow `80/tcp` (and `8018/tcp` if testing) from `0.0.0.0/0`.
+Optional: `22/tcp` from Administrator IP.
 
 ## Backend Security Group
-
-Allow
-
-```
-Application Port
-
-only from Frontend Security Group
-```
-
-SSH
-
-```
-22
-
-only from Frontend Security Group
-```
-
----
+Allow `8036/tcp` only from Frontend Security Group.
+SSH `22` only from Frontend Security Group.
 
 ## RDS Security Group
-
-Allow
-
-```
-5432
-
-only from Backend Security Group
-```
-
-No public access.
+Allow `5432` only from Backend Security Group. No public access.
 
 ---
 
 # Secure File Upload
-
-Workflow
-
 ```
-Frontend
-
-↓
-
-Backend
-
-↓
-
-Generate Presigned URL
-
-↓
-
-Upload directly to S3
-
-↓
-
-Backend receives metadata
-
-↓
-
-Save upload history
+Frontend -> Backend -> Generate Presigned URL -> Upload directly to S3 -> Backend receives metadata -> Save upload history
 ```
-
-Advantages
-
+Advantages:
 - Backend bandwidth reduced
 - No AWS credentials exposed
 - Large file upload supported
@@ -626,56 +388,24 @@ Advantages
 # IAM
 
 ## GitHub Actions
-
-Uses
-
-OIDC Federation
-
-No Access Key
-
-No Secret Key
-
-Permission
-
-```
-Push Docker images
-
-to
-
-Amazon ECR
-```
-
----
+Uses OIDC Federation. No Access Key or Secret Key.
+Permission: Push Docker images to Amazon ECR.
 
 ## Backend EC2
-
-IAM Role
-
-Permission
-
+IAM Role permissions:
 - Read S3
 - Read Secrets Manager
-
 No ECR push permission.
 
----
-
 ## Frontend EC2
-
-Permission
-
-Pull Docker image only.
+Permission: Pull Docker image only.
 
 ---
 
 # Secrets Management
 
-Database credentials are stored in
-
-AWS Secrets Manager.
-
-Features
-
+Database credentials are stored in AWS Secrets Manager.
+Features:
 - Automatic password rotation
 - Backend retrieves credentials dynamically
 - No plaintext password stored in source code
@@ -683,149 +413,75 @@ Features
 ---
 
 # Containerization
-
-Frontend
-
-```
-Docker
-
-↓
-
-Amazon ECR
-
-↓
-
-Frontend EC2
-```
-
-Backend
-
-```
-Docker
-
-↓
-
-Amazon ECR
-
-↓
-
-Backend EC2
-```
+- **Frontend**: Docker -> Amazon ECR -> Frontend EC2 (runs on Port 8018)
+- **Backend**: Docker -> Amazon ECR -> Backend EC2 (runs on Port 8036)
 
 ---
 
 # CI/CD
 
 ## Application Deployment
-
-Developer
-
-↓
-
-GitHub Push
-
-↓
-
-GitHub Actions
-
-↓
-
-Build Docker Image
-
-↓
-
-Push Image to Amazon ECR
-
-↓
-
-EC2 Pull Latest Image
-
-↓
-
-Restart Containers
-
----
+Developer -> GitHub Push -> GitHub Actions -> Build Docker Image -> Push Image to Amazon ECR -> EC2 Pull Latest Image -> Restart Containers
 
 ## ML Pipeline
-
-Processed Dataset
-
-↓
-
-GitHub Actions
-
-↓
-
-Train Model
-
-↓
-
-Evaluate
-
-↓
-
-Upload model.pkl
-
-↓
-
-Amazon S3
-
-↓
-
-Backend reload model
+Processed Dataset -> GitHub Actions -> Train Model -> Evaluate -> Upload model.pkl -> Amazon S3 -> Backend reload model
 
 ---
 
 # Technologies
 
-Frontend
+- **Frontend**: React, Axios, Chart.js, Vite
+- **Backend**: FastAPI, SQLAlchemy, Pandas, Scikit-learn, Uvicorn
+- **Database**: Amazon RDS PostgreSQL (SQLite local fallback)
+- **Storage**: Amazon S3 (Local directory fallback)
+- **Containers**: Docker
 
-- React
-- Axios
-- Chart.js
+---
 
-Backend
+# 🧪 Integration & Unit Testing
 
-- FastAPI
-- SQLAlchemy
-- Pandas
-- Scikit-learn
+An integration and unit test suite is provided to verify API endpoint capabilities. 
 
-Database
+To execute the tests locally within the virtual environment:
+```bash
+source venv/bin/activate
+python3 -m pytest backend/test_main.py
+```
 
-- Amazon RDS PostgreSQL
+### Test Coverage Details:
+- **Startup Auto-Training:** Verifies the API boots and compiles a fallback ML model if none exists.
+- **S3 Presigned URLs:** Verifies authorization endpoints return correct S3 directories.
+- **Simulated S3 Uploads:** Verifies uploading files through the local simulation layer.
+- **ETL Transformation:** Verifies parsing uploaded CSV files, normalizing dimensions, and writing database rows.
+- **Analytics aggregation:** Validates mathematical aggregation calculations for graphs.
 
-Storage
+---
 
-- Amazon S3
+# ⚙️ How to Run Locally
 
-Container
+### 1. Launch the Backend
+```bash
+cd backend
+source ../venv/bin/activate  # Activate python virtual environment
+uvicorn main:app --host 127.0.0.1 --port 8036 --reload
+```
+The interactive Swagger API documentation will be available at `http://127.0.0.1:8036/docs`.
 
-- Docker
-
-Container Registry
-
-- Amazon ECR
-
-CI/CD
-
-- GitHub Actions
-
-Infrastructure
-
-- Amazon EC2
-- Amazon VPC
-- NAT Gateway
-- S3 Gateway Endpoint
-- IAM
-- Secrets Manager
+### 2. Launch the Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+The React frontend dashboard will open at `http://127.0.0.1:8018`.
+- Go to the **Upload Dataset** page, select the sample CSV file located at `sample_data/bike_sharing_sample.csv`, and click **Start S3 Upload** -> **Execute ETL Pipeline**.
+- Visit the **Analytics** page to view the computed charts, or enter custom weather details on the **Prediction** page to see the model output!
 
 ---
 
 # Learning Objectives
 
 This project demonstrates:
-
 - AWS VPC networking
 - Public and Private subnet architecture
 - Secure S3 upload using Presigned URLs
